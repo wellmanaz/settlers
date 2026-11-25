@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#15362f">
+    <title>Settlers — a Catan-style game</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Settlers home">
+        <span class="brand-mark" aria-hidden="true">S</span>
+        <span>SETTLERS<small>BUILD YOUR ISLAND</small></span>
+      </a>
+      <div class="topbar-right">
+        <label for="player-count">PLAYERS</label>
+        <select id="player-count" aria-label="Number of players">
+          <option value="2">2 players</option>
+          <option value="3">3 players</option>
+          <option value="4" selected>4 players</option>
+        </select>
+        <button id="new-game" class="button button-quiet" type="button">New game</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="board-panel" aria-label="Game board">
+        <div class="board-heading">
+          <div>
+            <p class="eyebrow">THE ISLAND</p>
+            <h1>Make your mark.</h1>
+          </div>
+          <div class="turn-chip"><span class="turn-dot"></span><span id="turn-label">Player 1's turn</span></div>
+        </div>
+        <div class="board-wrap">
+          <svg id="board" viewBox="0 0 640 610" role="img" aria-label="Catan-style island game board"></svg>
+          <div id="board-hint" class="board-hint" aria-live="polite">Roll the dice to begin your turn.</div>
+        </div>
+      </section>
+
+      <aside class="game-panel">
+        <section class="turn-controls">
+          <div class="section-title"><span>YOUR TURN</span><span id="phase-label" class="phase-label">READY</span></div>
+          <div class="dice-row">
+            <div class="dice" id="die-one" aria-label="First die">–</div>
+            <span class="dice-plus">+</span>
+            <div class="dice" id="die-two" aria-label="Second die">–</div>
+            <div class="roll-result"><strong id="roll-total">–</strong><small>LAST ROLL</small></div>
+          </div>
+          <button id="roll-button" class="button button-primary" type="button">Roll the dice <span aria-hidden="true">↗</span></button>
+          <button id="end-turn" class="button button-secondary" type="button" disabled>End turn</button>
+        </section>
+
+        <section class="players-section">
+          <div class="section-title"><span>SETTLERS</span><span class="muted">FIRST TO 10 POINTS</span></div>
+          <div id="players" class="players-list"></div>
+        </section>
+
+        <section class="build-section">
+          <div class="section-title"><span>BUILD & TRADE</span><span class="muted">COST</span></div>
+          <div class="build-options">
+            <button class="build-option" data-build="road" type="button">
+              <span class="build-icon road-icon" aria-hidden="true">╱</span>
+              <span class="build-name">Road<small>Extend your route</small></span>
+              <span class="cost"><i class="wood"></i><i class="brick"></i></span>
+            </button>
+            <button class="build-option" data-build="settlement" type="button">
+              <span class="build-icon settlement-icon" aria-hidden="true">⌂</span>
+              <span class="build-name">Settlement<small>+1 victory point</small></span>
+              <span class="cost"><i class="wood"></i><i class="brick"></i><i class="sheep"></i><i class="wheat"></i></span>
+            </button>
+            <button class="build-option" data-build="city" type="button">
+              <span class="build-icon city-icon" aria-hidden="true">⌂</span>
+              <span class="build-name">City<small>Upgrade · +1 point</small></span>
+              <span class="cost"><i class="wheat"></i><i class="wheat"></i><i class="ore"></i><i class="ore"></i><i class="ore"></i></span>
+            </button>
+          </div>
+          <div class="trade-row">
+            <span class="trade-label">BANK TRADE <small>4 matching cards for 1</small></span>
+            <select id="trade-give" aria-label="Resource to trade away"></select>
+            <span class="trade-arrow">→</span>
+            <select id="trade-get" aria-label="Resource to receive"></select>
+            <button id="trade-button" class="button button-trade" type="button" aria-label="Make bank trade">TRADE</button>
+          </div>
+          <p id="action-message" class="action-message" aria-live="polite"></p>
+        </section>
+
+        <section class="resources-section">
+          <div class="section-title"><span>RESOURCE CARDS</span><span id="card-count" class="muted">0 CARDS</span></div>
+          <div id="resources" class="resource-grid"></div>
+        </section>
+
+        <section class="log-section">
+          <div class="section-title"><span>ISLAND JOURNAL</span></div>
+          <ol id="game-log" class="game-log" aria-live="polite"></ol>
+        </section>
+      </aside>
+    </main>
+    <footer>Inspired by the classic island-building board game. Gather, build, and be first to 10 points.</footer>
+    <script src="game.js"></script>
+  </body>
+</html>
