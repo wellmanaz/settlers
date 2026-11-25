@@ -1,5 +1,7 @@
 # Hexfront
 
+lets go
+
 A couch board game for the living room: the **TV is the board** (any browser, built for the Xbox's Edge browser) and **each player's phone is their controller**. 2 to 4 players. Proof of concept, plain HTML and JavaScript, no build step and no server of its own.
 
 Hexfront is an original game in the hex-tile trading genre: claim an asteroid belt, roll for resources, build conduits, outposts and colonies, trade, and race to 10 points.
