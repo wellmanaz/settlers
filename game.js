@@ -244,7 +244,12 @@
   function log(message) {
     state.logs.unshift(message);
     state.logs = state.logs.slice(0, 7);
-    document.querySelector("#game-log").innerHTML = state.logs.map((entry) => `<li>${entry}</li>`).join("");
+    const gameLog = document.querySelector("#game-log");
+    gameLog.replaceChildren(...state.logs.map((entry) => {
+      const item = document.createElement("li");
+      item.textContent = entry;
+      return item;
+    }));
   }
 
   function ownsCost(player, cost) {
