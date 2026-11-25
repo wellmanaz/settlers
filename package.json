@@ -6,10 +6,17 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "serve": "npx --yes http-server -c-1 -p 8080 .",
-    "test:ui": "node test/ui-smoke.mjs"
+    "test:ui": "node test/ui-smoke.mjs",
+    "test:ui:relay": "node test/ui-smoke.mjs relay",
+    "test:net": "node test/net-scenarios.mjs",
+    "serve": "npx --yes http-server -c-1 -p 8080 ."
   },
   "devDependencies": {
-    "jsdom": "^26.1.0"
+    "aedes": "^0.51.3",
+    "express": "^4.22.3",
+    "jsdom": "^26.1.0",
+    "node-datachannel": "^0.33.6",
+    "peer": "^1.0.2",
+    "ws": "^8.23.0"
   }
 }

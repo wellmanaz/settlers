@@ -36,7 +36,10 @@ html, body {
 .logo.small { font-size: 1.4rem; }
 .muted { color: var(--muted); margin: 4px 0; }
 .big { font-size: 1.25rem; }
-.error { color: var(--danger); font-weight: 600; }
+.error { color: var(--danger); font-weight: 400; line-height: 1.4; text-align: left; }
+.error b { font-weight: 700; }
+.linkstep { min-height: 2.8em; color: var(--muted, #a9adc4); text-align: center; line-height: 1.4; max-width: 22rem; }
+.small { font-size: 0.8rem; }
 
 label { display: grid; gap: 6px; text-align: left; font-weight: 600; color: var(--muted); }
 input {

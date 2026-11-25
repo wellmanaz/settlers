@@ -34,6 +34,10 @@ const ui = {
   view: null,
   connected: [],
   link: 'down', // up | down | retrying
+  linkVia: '', // direct | relay | local, once linked
+  linkStep: '', // what the connection is doing right now
+  linkSince: 0, // when the current connection attempt started
+  errorDetail: '',
   joined: false,
   pick: null, // user-chosen build in main phase: { item }
   selected: null, // { key, id }
@@ -48,6 +52,7 @@ const ui = {
 };
 
 let client = null;
+let attempt = null; // token of the current connection attempt
 let retryTimer = null;
 let toastTimer = null;
 
@@ -57,32 +62,60 @@ function connect() {
   clearTimeout(retryTimer);
   const old = client;
   client = null;
+  attempt = null;
   old?.close();
   ui.link = ui.joined ? 'retrying' : 'down';
+  ui.linkStep = 'Starting…';
+  ui.linkSince = Date.now();
   if (!ui.joined) ui.screen = 'connecting';
   render();
-  const c = createClient(ui.room, ui.mode, {
-    onOpen: () => {
-      if (client === c) c.send({ t: 'join', clientId: clientId(), name: ui.name });
+  // Handlers can fire while createClient is still running, before `client` is set,
+  // so each attempt is identified by a token rather than by the client object.
+  const token = {};
+  attempt = token;
+  const current = () => attempt === token;
+  client = createClient(ui.room, ui.mode, {
+    onOpen: (how) => {
+      if (!current()) return;
+      ui.linkVia = how;
+      ui.linkStep = 'Linked. Joining the game…';
+      renderLinkStep();
+      client.send({ t: 'join', clientId: clientId(), name: ui.name });
     },
-    onMessage: (msg) => { if (client === c) onMessage(msg); },
+    onStatus: (text) => {
+      if (!current()) return;
+      ui.linkStep = text;
+      renderLinkStep();
+    },
+    onMessage: (msg) => { if (current()) onMessage(msg); },
     onClose: (reason) => {
-      if (client !== c) return;
+      if (!current()) return;
+      attempt = null;
       client = null;
       if (reason === 'left') return;
       if (!ui.joined) {
-        ui.error = reason || 'Could not reach the TV';
+        ui.error = "Couldn't connect to the TV.";
+        ui.errorDetail = reason || '';
         ui.screen = 'join';
         render();
         return;
       }
       ui.link = 'retrying';
+      ui.linkStep = `${reason || 'Lost the TV.'} Trying again…`;
       render();
       retryTimer = setTimeout(connect, 2500);
     },
   });
-  client = c;
 }
+
+// Updates just the connection-progress line, so typing elsewhere isn't disturbed.
+function renderLinkStep() {
+  const el = document.getElementById('linkstep');
+  if (!el) return;
+  const secs = Math.max(0, Math.round((Date.now() - ui.linkSince) / 1000));
+  el.textContent = `${ui.linkStep} (${secs}s)`;
+}
+setInterval(() => { if (ui.screen === 'connecting' || ui.link !== 'up') renderLinkStep(); }, 1000);
 
 function send(msg) {
   if (!client || !client.open) { toast('Not connected to the TV yet'); return; }
@@ -98,6 +131,7 @@ function onMessage(msg) {
       ui.joined = true;
       ui.link = 'up';
       ui.error = '';
+      ui.errorDetail = '';
       store.set('room', ui.room);
       break;
     case 'who':
@@ -196,11 +230,14 @@ function render() {
   if (ui.screen === 'join') return renderJoin();
   if (ui.screen === 'connecting') {
     root.innerHTML = `<div class="screen center"><h1 class="logo">HEX<span>FRONT</span></h1><p class="big">Connecting to room ${esc(ui.room)}…</p>
+      <p class="linkstep" id="linkstep" role="status" aria-live="polite"></p>
       <button class="btn ghost" data-do="cancelJoin">Cancel</button></div>`;
+    renderLinkStep();
     return;
   }
-  if (ui.screen === 'lobby') return renderLobby();
-  return renderGame();
+  if (ui.screen === 'lobby') renderLobby();
+  else renderGame();
+  renderLinkStep();
 }
 
 function renderJoin() {
@@ -211,9 +248,16 @@ function renderJoin() {
     <label>Room code<input name="room" value="${esc(ui.room)}" maxlength="8" autocapitalize="characters" autocomplete="off" required></label>
     <label>Your name<input name="name" value="${esc(ui.name)}" maxlength="16" autocomplete="nickname" required></label>
     <button class="btn primary big" type="submit">Join</button>
-    ${ui.error ? `<p class="error">${esc(ui.error)}</p>` : ''}
-    ${ui.mode === 'local' ? '<p class="muted">Local test mode</p>' : ''}
+    ${ui.error ? `<div class="error" role="alert"><b>${esc(ui.error)}</b>${ui.errorDetail ? `<br>${esc(ui.errorDetail)}` : ''}</div>` : ''}
+    ${ui.mode !== 'auto' ? `<p class="muted">Connection mode: ${esc(ui.mode)}</p>` : ''}
   </form>`;
+}
+
+function linkLabel() {
+  if (ui.linkVia === 'direct') return 'Linked directly to the TV';
+  if (ui.linkVia === 'relay') return 'Linked to the TV through the relay';
+  if (ui.linkVia === 'local') return 'Local test link';
+  return '';
 }
 
 function renderLobby() {
@@ -227,6 +271,7 @@ function renderLobby() {
     <button class="btn primary big" data-do="start" ${l.players.length >= 2 ? '' : 'disabled'}>Start game</button>
     <p class="muted">${l.players.length < 2 ? 'Waiting for at least one more player.' : 'Start when everyone is in (up to 4).'}</p>
     <button class="btn ghost" data-do="leave">Leave room</button>
+    <p class="muted small">${linkLabel()}</p>
   </div>`;
 }
 
@@ -252,7 +297,7 @@ function renderGame() {
       <span class="pts">${p.points}<small>/${WIN_POINTS}</small></span>
       <span class="turn ${myTurn ? 'mine' : ''}" style="--tc:${cur.color}">${turnText}</span>
     </header>
-    ${ui.link !== 'up' ? '<div class="linkbar">Reconnecting to the TV…</div>' : ''}
+    ${ui.link !== 'up' ? '<div class="linkbar" role="status">Reconnecting to the TV… <span id="linkstep"></span></div>' : ''}
     <div class="map" id="map">${map}</div>
     <div class="hand">${RESOURCES.map((r) => resChip(r, p.hand[r])).join('')}</div>
     <section class="panel">${panelHtml(v, pick, sel)}</section>
@@ -414,6 +459,7 @@ document.addEventListener('submit', (ev) => {
   if (!ui.room || !ui.name) { ui.error = 'Enter the room code and your name.'; render(); return; }
   store.set('name', ui.name);
   ui.error = '';
+  ui.errorDetail = '';
   keepAwake();
   connect();
 });
@@ -424,7 +470,7 @@ document.addEventListener('click', (ev) => {
   const v = ui.view;
   const d = el.dataset;
   switch (d.do) {
-    case 'cancelJoin': { const c = client; client = null; c?.close(); ui.screen = 'join'; break; }
+    case 'cancelJoin': { const c = client; client = null; attempt = null; c?.close(); ui.screen = 'join'; break; }
     case 'start': send({ t: 'start' }); return;
     case 'leave': send({ t: 'leave' }); return;
     case 'newGame': send({ t: 'newGame' }); return;

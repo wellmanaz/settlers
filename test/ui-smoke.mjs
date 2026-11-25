@@ -1,9 +1,10 @@
 // UI smoke test: runs the real TV page and several phone pages, each in its own
-// worker thread with a jsdom DOM, linked by BroadcastChannel (the ?net=local
-// transport). Phones are driven only through their DOM: form submit, button
-// taps and map taps. Plays a whole game to a winner.
+// worker thread with a jsdom DOM. Phones are driven only through their DOM: form
+// submit, button taps and map taps. Plays a whole game to a winner.
 //
-//   npm install && npm run test:ui
+//   npm install && npm run test:ui        pages linked by BroadcastChannel (?net=local)
+//   npm run test:ui:relay                 pages linked through a local MQTT broker (?net=relay),
+//                                         the same relay code the live site falls back to
 //
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { readFileSync } from 'node:fs';
@@ -31,6 +32,8 @@ async function runPage() {
   define('navigator', w.navigator);
   define('FormData', w.FormData);
   if (page === 'index.html') w.eval(readFileSync(join(ROOT, 'vendor/qrcode-generator-1.4.4.js'), 'utf8'));
+  // The bundle starts with "use strict", so under eval its top-level var stays local: export it.
+  if (url.includes('net=relay')) w.eval(`${readFileSync(join(ROOT, 'vendor/mqtt-5.16.1.min.js'), 'utf8')};window.mqtt = mqtt;`);
   w.BroadcastChannel = globalThis.BroadcastChannel;
   await import(pathToFileURL(join(ROOT, 'js', page === 'index.html' ? 'host.js' : 'phone.js')).href);
   const AsyncFunction = (async () => {}).constructor;
@@ -76,7 +79,10 @@ function spawn(page, query, storage) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function until(check, what, timeout = 3000) {
+const RELAY = isMainThread && process.argv[2] === 'relay';
+let NETQ = 'net=local';
+
+async function until(check, what, timeout = RELAY ? 10000 : 3000) {
   const t0 = Date.now();
   for (;;) {
     const v = await check();
@@ -90,9 +96,23 @@ let rngState = 12345;
 const rand = () => { rngState = (rngState * 1103515245 + 12345) % 2147483648; return rngState / 2147483648; };
 const pickOne = (arr) => arr[Math.floor(rand() * arr.length)];
 
+async function startBroker() {
+  const http = await import('node:http');
+  const { WebSocketServer, createWebSocketStream } = await import('ws');
+  const aedes = (await import('aedes')).default();
+  const srv = http.createServer();
+  new WebSocketServer({ server: srv }).on('connection', (ws) => aedes.handle(createWebSocketStream(ws)));
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  return `ws://127.0.0.1:${srv.address().port}/mqtt`;
+}
+
 async function main() {
+  if (RELAY) {
+    NETQ = `net=relay&relay=${encodeURIComponent(await startBroker())}`;
+    console.log('Linking pages through a local MQTT broker (relay mode)');
+  }
   const t0 = Date.now();
-  let host = spawn('index.html', '?net=local');
+  let host = spawn('index.html', `?${NETQ}`);
   await host.ready;
   const room = await until(() => host.run('return hf.app.room'), 'room code');
   const lobby = await host.run(`return {
@@ -100,12 +120,26 @@ async function main() {
   assert.ok(lobby.qr, 'TV shows a QR code');
   assert.equal(lobby.code, room);
   assert.equal(lobby.start, true, 'Start disabled with no players');
-  console.log(`TV lobby up, room ${room}`);
+  const tvStatus = await until(() => host.run(`const t = d.querySelector('[data-status]')?.textContent || ''; return /Online|Local test mode/.test(t) && t`), 'TV online status');
+  console.log(`TV lobby up, room ${room}, status "${tvStatus}"`);
+
+  if (RELAY) {
+    // A wrong room code: the phone shows what it is doing, then a clear error instead of hanging.
+    const lost = spawn('play.html', `?room=WRONG&${NETQ}`);
+    await lost.ready;
+    await lost.run(`const f = d.querySelector('[data-form="join"]'); f.querySelector('[name=name]').value = 'Zed'; f.requestSubmit();`);
+    const step = await until(() => lost.run(`return d.getElementById('linkstep')?.textContent`), 'connection progress on the phone');
+    const err = await until(() => lost.run(`return hf.ui.screen === 'join' && d.querySelector('.error')?.textContent`), 'wrong-room error', 20000);
+    assert.match(err, /Couldn't connect to the TV/);
+    assert.match(err, /didn't answer in room WRONG/);
+    console.log(`Wrong room: phone showed "${step.trim()}", then "${err.trim()}"`);
+    await lost.worker.terminate();
+  }
 
   const names = ['Ana', 'Ben', 'Cy'];
   const phones = [];
   for (const name of names) {
-    const ph = spawn('play.html', `?room=${room}&net=local`);
+    const ph = spawn('play.html', `?room=${room}&${NETQ}`);
     await ph.ready;
     await ph.run(`
       const f = d.querySelector('[data-form="join"]');
@@ -177,7 +211,7 @@ async function main() {
       const offline = await host.run(`return d.querySelectorAll('.prow .badge').length`);
       assert.equal(offline, 1, 'TV shows the offline badge');
       // Same player on a "new" phone (no saved id) retakes the seat by name.
-      const ph = spawn('play.html', `?room=${room}&net=local`);
+      const ph = spawn('play.html', `?room=${room}&${NETQ}`);
       await ph.ready;
       await ph.run(`const f = d.querySelector('[data-form="join"]'); f.querySelector('[name=name]').value = 'cy'; f.requestSubmit();`);
       await until(() => ph.run(`return hf.ui.screen === 'game' && hf.ui.view.you === 2`), 'seat retaken');
@@ -188,7 +222,7 @@ async function main() {
       resumed = true;
       const saved = await host.run(`return { 'hexfront:host': w.localStorage.getItem('hexfront:host') }`);
       await host.worker.terminate();
-      host = spawn('index.html', '?net=local', saved);
+      host = spawn('index.html', `?${NETQ}`, saved);
       await host.ready;
       await until(() => host.run(`return !!d.getElementById('resumeBtn')`), 'resume prompt');
       await host.run(`tap(d.getElementById('resumeBtn'))`);
@@ -303,6 +337,7 @@ async function main() {
   await host.worker.terminate();
   for (const ph of phones) await ph.worker.terminate();
   console.log('UI smoke test passed');
+  process.exit(0);
 }
 
 if (!isMainThread) {

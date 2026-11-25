@@ -5,7 +5,7 @@ import {
 } from './engine.js';
 import { renderBoard, esc } from './render.js';
 import { iconSvg } from './icons.js';
-import { createHost, makeRoomCode, netMode } from './net.js';
+import { createHost, makeRoomCode, netMode, relayOverride } from './net.js';
 
 const SAVE_KEY = 'hexfront:host';
 const root = document.getElementById('app');
@@ -18,7 +18,9 @@ const app = {
   game: null,
   previews: {}, // pid -> { kind, id, item }
   status: { text: 'Starting…', ok: false },
+  notice: null, // { text, at }: recent connection event, shown for a few seconds
 };
+let noticeTimer = null;
 
 // ---------- persistence ----------
 
@@ -37,7 +39,8 @@ function save() {
 function loadSaved() {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-    if (s && s.room && s.mode === app.mode) return s;
+    // Saves from before the relay existed say 'peer'; they resume fine in the default mode.
+    if (s && s.room && (s.mode === app.mode || (s.mode === 'peer' && app.mode === 'auto'))) return s;
   } catch { /* ignore */ }
   return null;
 }
@@ -51,6 +54,12 @@ function openRoom(room) {
     onMessage,
     onLeave,
     onStatus: (text, ok) => { app.status = { text, ok }; renderStatus(); },
+    onNotice: (text) => {
+      app.notice = { text, at: Date.now() };
+      renderStatus();
+      clearTimeout(noticeTimer);
+      noticeTimer = setTimeout(() => { app.notice = null; renderStatus(); }, 12000);
+    },
   });
   render();
 }
@@ -192,7 +201,9 @@ function controllerUrl() {
   u.search = '';
   u.hash = '';
   u.searchParams.set('room', app.room);
-  if (app.mode === 'local') u.searchParams.set('net', 'local');
+  if (app.mode !== 'auto') u.searchParams.set('net', app.mode);
+  const relay = relayOverride();
+  if (relay) u.searchParams.set('relay', relay);
   return u.toString();
 }
 
@@ -214,11 +225,14 @@ function render() {
 }
 
 function renderStatus() {
-  const el = document.getElementById('status');
-  if (el) {
+  document.querySelectorAll('[data-status]').forEach((el) => {
     el.textContent = app.status.text;
-    el.className = `status-text ${app.status.ok ? 'ok' : 'warn'}`;
-  }
+    el.classList.toggle('ok', app.status.ok);
+    el.classList.toggle('warn', !app.status.ok);
+  });
+  document.querySelectorAll('[data-notice]').forEach((el) => {
+    el.textContent = app.notice ? app.notice.text : '';
+  });
 }
 
 function renderLobby() {
@@ -243,6 +257,8 @@ function renderLobby() {
           <div class="url">${esc(url.replace(/^https?:\/\//, '').replace(/\?.*$/, ''))}</div>
           <div class="label">and enter room code</div>
           <div class="room-code">${esc(app.room)}</div>
+          <div class="status-text net-status" data-status role="status"></div>
+          <div class="notice" data-notice aria-live="polite"></div>
         </div>
       </section>
       <section class="card seats">
@@ -262,7 +278,7 @@ function renderLobby() {
         <span>${ITEM_NAMES.colony} ${costHtml(COSTS.colony)}</span>
       </div>
     </section>
-    <footer class="footer"><span id="status"></span>
+    <footer class="footer">
       <button id="fsBtn" class="tv-btn small">Full screen</button>
       <button id="newRoomBtn" class="tv-btn small">New room code</button>
     </footer>
@@ -383,7 +399,7 @@ function renderGame() {
       <ol class="log">${log}</ol>
       <div class="mini-join">
         <div class="mini-qr">${qrSvg(url)}</div>
-        <div>Rejoin: room <b>${esc(app.room)}</b><br><span id="status"></span></div>
+        <div>Rejoin: room <b>${esc(app.room)}</b><br><span class="status-text" data-status></span><br><span class="notice" data-notice></span></div>
       </div>
     </aside>
     ${over ? `<div class="overlay"><div class="winner" style="--pc:${g.players[g.winner].color}">

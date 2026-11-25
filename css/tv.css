@@ -138,6 +138,8 @@ body {
 .footer { display: flex; align-items: center; gap: 1.5vw; font-size: 1rem; }
 .status-text.ok { color: #7ee2a8; }
 .status-text.warn { color: #ffb86b; }
+.net-status { margin-top: 1.5vh; font-size: 1.15rem; line-height: 1.35; max-width: 40vw; }
+.notice { font-size: 1rem; color: var(--muted, #a9adc4); min-height: 1.3em; line-height: 1.35; }
 
 /* ---------- game ---------- */
 .game { display: grid; grid-template-columns: 1fr 31vw; gap: 2vw; }
