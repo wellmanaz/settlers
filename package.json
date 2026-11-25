@@ -1,0 +1,15 @@
+{
+  "name": "hexfront",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hexfront: a couch board game for a TV browser with phones as controllers (proof of concept)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "serve": "npx --yes http-server -c-1 -p 8080 .",
+    "test:ui": "node test/ui-smoke.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}
